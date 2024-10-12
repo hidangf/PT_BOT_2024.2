@@ -44,6 +44,25 @@ async def ssh_connect(command):
     finally:
         client.close()
 
+async def ssh_connect(command):
+    host = os.getenv('DB_HOST')
+    port = int(os.getenv('RM_PORT'))
+    username = os.getenv('DB_HOST_USER')
+    password = os.getenv('DB_HOST_PASSWORD')
+
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(hostname=host, port=port, username=username, password=password)
+        stdin, stdout, stderr = client.exec_command(command)
+        output = stdout.read().decode()
+        return output.strip() or stderr.read().decode()
+    except Exception as e:
+        return f"Ошибка при подключении: {str(e)}"
+    finally:
+        client.close()
+
+
 async def get_repl_logs_docker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     command = "docker exec db_container grep 'replication' /var/log/postgresql/postgresql.log | tail -n 100"
     output = await ssh_connect(command)
@@ -318,7 +337,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_repl_logs_normal_env(update: Update, context: ContextTypes.DEFAULT_TYPE):
     command = "cat /var/log/postgresql/postgresql-14-main.log | grep -i replication"
-    output = await ssh_connect(command)
+    output = await ssh_database_connect(command)
     await update.message.reply_text(f"Найденные логи:\n")
     for i in range(0, len(output), max_message_length):
         part = output[i:i + max_message_length]
