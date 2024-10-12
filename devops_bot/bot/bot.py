@@ -44,7 +44,7 @@ async def ssh_connect(command):
     finally:
         client.close()
 
-async def ssh_connect(command):
+async def ssh_database_connect(command):
     host = os.getenv('DB_HOST')
     port = int(os.getenv('RM_PORT'))
     username = os.getenv('DB_HOST_USER')
