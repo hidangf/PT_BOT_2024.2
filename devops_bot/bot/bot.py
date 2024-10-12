@@ -44,7 +44,7 @@ async def ssh_connect(command):
     finally:
         client.close()
 
-async def get_repl_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_repl_logs_docker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     command = "docker exec db_container grep 'replication' /var/log/postgresql/postgresql.log | tail -n 100"
     output = await ssh_connect(command)
     await update.message.reply_text(f"Логи репликации:\n")
@@ -316,15 +316,26 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text)
 
-#async def get_repl_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-#    command = "cat /var/log/postgresql/postgresql-14-main.log | grep -i repl_user"
-#    output = await ssh_connect(command)
-#    await update.message.reply_text(f"Найденные логи:\n")
-#    for i in range(0, len(output), max_message_length):
-#        part = output[i:i + max_message_length]
-#        await update.message.reply_text(part)
+async def get_repl_logs_normal_env(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    command = "cat /var/log/postgresql/postgresql-14-main.log | grep -i replication"
+    output = await ssh_connect(command)
+    await update.message.reply_text(f"Найденные логи:\n")
+    for i in range(0, len(output), max_message_length):
+        part = output[i:i + max_message_length]
+        await update.message.reply_text(part)
 
+def inside_docker():
+    try:
+        with open('/proc/1/cgroup', 'r') as f:
+            return 'docker' in f.read()
+    except FileNotFoundError:
+        return False
 
+def get_repl_logs():
+    if inside_docker():
+        get_repl_logs_docker()
+    else:
+        get_repl_logs_normal_env()
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(os.getenv('TOKEN')).build()
