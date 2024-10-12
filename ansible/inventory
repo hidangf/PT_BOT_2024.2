@@ -1,12 +1,12 @@
 [bot]
-bot_server ansible_host=192.168.160.139 ansible_connection=ssh ansible_user=nikita ansible_password=12345
+bot_server ansible_host=192.168.160.139 ansible_connection=ssh ansible_user=nikita ansible_become_password=12345 ansible_password=12345
 
 [db]
-db_server ansible_host=192.168.160.162 ansible_connection=ssh ansible_user=nikita ansible_password=12345
+db_server ansible_host=192.168.160.162 ansible_connection=ssh ansible_user=nikita ansible_become_password=12345 ansible_password=12345
 
 [db_repl]
-db_repl_server ansible_host=192.168.160.170 ansible_connection=ssh ansible_user=nikita ansible_password=12345
+db_repl_server ansible_host=192.168.160.170 ansible_connection=ssh ansible_user=nikita ansible_become_password=12345 ansible_password=12345
 
 [remote]
 
-remote_server ansible_host=192.168.160.131 ansible_connection=ssh ansible_user=nikita ansible_password=123
+remote_server ansible_host=192.168.160.131 ansible_connection=ssh ansible_user=nikita ansible_become_password=123 ansible_password=123
