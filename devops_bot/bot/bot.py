@@ -331,11 +331,11 @@ def inside_docker():
     except FileNotFoundError:
         return False
 
-def get_repl_logs():
+async def get_repl_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if inside_docker():
-        get_repl_logs_docker()
+        await get_repl_logs_docker(update, context)
     else:
-        get_repl_logs_normal_env()
+        await get_repl_logs_normal_env(update, context)
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(os.getenv('TOKEN')).build()
