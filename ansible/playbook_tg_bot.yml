@@ -1,0 +1,192 @@
+- hosts: bot
+  vars_files:
+    - vars.yml
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: "bot_clone"
+      git:
+        repo: https://github.com/hidangf/PT_BOT_2024.2.git
+        dest: /tmp/cloned/
+        version: docker
+        clone: yes
+        update: yes
+        force: yes
+    - name: "bot_dir"
+      ansible.builtin.file:
+        path: /usr/src/app/
+        state: directory
+    - name: "bot_dir_mv"
+      command: mv /tmp/cloned/devops_bot/bot/bot.py /usr/src/app/
+    - name: "req_mv"  
+      command: mv /tmp/cloned/devops_bot/bot/requirements.txt /usr/src/app/
+    - name: "bot_apt"
+      apt:
+        name:
+          - python3
+          - python3-pip
+        state: present
+    - name: "bot_pip"
+      pip:
+        requirements:  /usr/src/app/requirements.txt
+    - name: bot_env_copy
+      ansible.builtin.copy:
+        src: ./.env
+        dest: /usr/src/app/.env
+        mode: '0777'
+    - name: bot_env_insert1
+      ansible.builtin.lineinfile:
+        path: /usr/src/app/.env
+        line: "DB_HOST={{ hostvars['db_server'].ansible_host }}"
+    - name: bot_env_insert1
+      ansible.builtin.lineinfile:
+        path: /usr/src/app/.env
+        line: "DB_REPL_HOST={{ hostvars['db_repl_server'].ansible_host }}"
+
+    - name: "bot_clean"
+      shell: /bin/rm -rf /tmp/cloned
+
+- hosts: db
+  vars:
+    allow_world_readable_tmpfiles: true
+  vars_files:
+    - vars.yml
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: "db_apt"
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - python3
+          - python3-pip
+          - acl
+          - libpq-dev
+        state: present
+    - name: "db_psy"
+      pip:
+        name:
+          - psycopg2
+        state: present
+    - name: "db_ignore"
+      ansible.builtin.file:
+        path: /usr/lib/python3.11/EXTERNALLY-MANAGED
+        state: absent
+    - name: "db_stop"
+      service: "name={{ item }} state=stopped"
+      with_items:
+        - postgresql
+    - name: "db_hba"
+      copy:
+        src: ./pg_hba.conf
+        dest: /etc/postgresql/14/main/pg_hba.conf
+    - name: "db_config_pg_insert"
+      ansible.builtin.lineinfile:
+        path: /etc/postgresql/14/main/pg_hba.conf
+        line: "host all all {{ hostvars['bot_server'].ansible_host }}/24 password"
+    - name: "db_config_pg_insert2"
+      ansible.builtin.lineinfile:
+        path: /etc/postgresql/14/main/pg_hba.conf
+        line: "host replication {{ DB_REPL_USER  }} {{ hostvars['db_repl_server'].ansible_host }}/24 scram-sha-256"
+    - name: "db_conf"
+      copy:
+        src: ./config-postgresql
+        dest: /etc/postgresql/14/main/postgresql.conf
+    - name: "db_services"
+      service: "name={{ item }} state=started enabled=yes"
+      with_items:
+        - postgresql
+    - name: "db_create"
+      postgresql_db:
+        state: present
+        name: "{{ DB_DATABASE }}"
+      become: yes
+      become_user: postgres
+    - name: "db_table_emails"
+      postgresql_table:
+        db: "{{ DB_DATABASE }}"
+        table: "emails"
+        columns:
+        - id SERIAL PRIMARY KEY
+        - email VARCHAR(255) NOT NULL
+      become: yes
+      become_user: postgres
+    - name: "db_table_phones"
+      postgresql_table:
+        db: "{{ DB_DATABASE }}"
+        table: "phones"
+        columns:
+        - id SERIAL PRIMARY KEY
+        - phone_number VARCHAR(255) NOT NULL
+      become: yes
+      become_user: postgres
+    - name: "db_create_user"
+      postgresql_user:
+        state: present
+        name: "{{ DB_USER }}"
+        password: "{{ DB_PASSWORD }}"
+      become: yes
+      become_user: postgres
+    - name: "db_grant"
+      postgresql_privs:
+        type: database
+        database: "{{ DB_DATABASE }}"
+        roles: "{{ DB_USER }}"
+        grant_option: no
+        privs: all
+      become: yes
+      become_user: postgres
+    - name: "db_replica_user"
+      shell: sudo -u postgres psql -c "DROP ROLE IF EXISTS {{ DB_REPL_USER }};" && sudo -u postgres psql -c "CREATE USER {{ DB_REPL_USER }} REPLICATION LOGIN ENCRYPTED PASSWORD '{{ DB_REPL_PASSWORD }}';"
+    - name: "db_archive"
+      file:
+        path: /oracle/pg_data/archive
+        state: directory
+        recurse: yes
+        owner: postgres
+        group: postgres
+    - name: "db_finish"
+      ansible.builtin.debug:
+        msg: Done configuring PostgreSQL server
+
+- hosts: db_repl
+  vars_files:
+    - vars.yml
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: "db_repl_apt"
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - python3
+        state: present
+    - name: "db_repl_stop"
+      service: "name={{ item }} state=stopped"
+      with_items:
+        - postgresql
+    - name: "db_repl_clean"
+      shell: /bin/rm -rf /etc/postgresql/14/main/*
+    - name: "db_pgpass"
+      copy:
+        src: ./pgpass
+        dest: /var/lib/postgresql/.pgpass
+        owner: postgres
+        group: postgres
+        mode: '0600'
+    - name: "db_replica"
+      command: su postgres -c "pg_basebackup -R -h {{ hostvars['db_server'].ansible_host }} -U {{ DB_REPL_USER }} -D /etc/postgresql/14/main/ -P"
+    - name: "db_finish"
+      ansible.builtin.debug:
+        msg: Done replicating PostgreSQL db
+- hosts: bot
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: "bot_online"
+      ansible.builtin.debug:
+        msg: Bot is online
+    - name: bot_up
+      command: python3 /usr/src/app/bot.py
