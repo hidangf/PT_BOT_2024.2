@@ -1,0 +1,78 @@
+version: '3'
+services:
+  bot:
+    env_file:
+      - .env
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: bot_cont
+    environment:
+      - TOKEN=$BOT_TOKEN
+      - DB_DATABASE=$DB_DATABASE
+      - DB_USER=$DB_USER
+      - DB_PASSWORD=$DB_PASSWORD
+      - DB_HOST=db
+      - DB_PORT=$DB_PORT
+    volumes:
+      - db_data:/var/log/postgresql
+    depends_on:
+      - db
+    networks:
+      custom_network:
+
+  db:
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    container_name: db_container
+    env_file:
+      - .env
+    environment:
+      - DB_USER=$DB_USER
+      - DB_PASSWORD=$DB_PASSWORD
+      - DB_DATABASE=$DB_DATABASE
+      - DB_PORT=$DB_PORT
+      - DB_REPL_USER=$DB_REPL_USER
+      - DB_REPL_PASSWORD=$DB_REPL_PASSWORD
+      - POSTGRES_USER=$DB_USER
+      - POSTGRES_PASSWORD=$DB_PASSWORD
+      - db_data:/var/log/postgresql
+    command: su - postgres -c "export PGDATA=/var/lib/postgresql/data && if [ ! -f /var/lib/postgresql/data/postgresql.conf ]; then initdb && \
+             pg_ctl start && psql -c 'CREATE DATABASE $DB_DATABASE;' -c \"ALTER ROLE $DB_USER PASSWORD '$DB_PASSWORD'\" -c \"CREATE USER $DB_REPL_USER REPLICATION LOGIN CONNECTION LIMIT 1000 ENCRYPTED PASSWORD '$DB_REPL_PASSWORD';\" && \
+             psql -d '$DB_DATABASE' -c 'CREATE TABLE emails(id SERIAL PRIMARY KEY, email VARCHAR(255) NOT NULL); CREATE TABLE phones(id SERIAL PRIMARY KEY, phone_number VARCHAR(255) NOT NULL);' && psql -c 'GRANT ALL PRIVILEGES ON DATABASE $DB_DATABASE TO $DB_USER;' && psql -d '$DB_DATABASE' -c 'GRANT ALL PRIVILEGES ON TABLE emails TO $DB_USER' && psql -d '$DB_DATABASE' -c 'GRANT ALL PRIVILEGES ON TABLE phones TO $DB_USER' && psql -d '$DB_DATABASE' -c 'GRANT ALL ON SEQUENCE emails_id_seq TO $DB_USER; GRANT ALL ON SEQUENCE phones_id_seq TO $DB_USER;' && pg_ctl stop; fi && \
+             echo 'host $DB_DATABASE $DB_USER all password' >> /var/lib/postgresql/data/pg_hba.conf && \
+             echo 'host replication $DB_REPL_USER all scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf && \
+             postgres -c 'port=$DB_PORT' -c 'listen_addresses=*' -c 'archive_mode=on' -c 'archive_command=cp %p /oracle/pg_data/archive/%f' -c 'max_wal_senders=10' -c 'wal_level=replica' -c 'wal_log_hints=on' -c 'log_replication_commands=on' -c 'logging_collector=on' -c 'log_directory=/var/log/postgresql/' -c 'log_filename=postgresql.log'"
+
+    restart: always
+    networks:
+      custom_network:
+
+  db_repl:
+    env_file:
+      - .env
+    build:
+      context: ./db_repl
+      dockerfile: Dockerfile
+    container_name: db_repl_container
+    environment:
+      - DB_REPL_PASSWORD=$DB_REPL_PASSWORD
+      - DB_REPL_USER=$DB_REPL_USER
+      - DB_REPL_HOST=db
+      - DB_REPL_PORT=$DB_REPL_PORT
+    depends_on:
+      - db
+    networks:
+      custom_network:
+
+volumes:
+  db_data: {}
+
+networks:
+   custom_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet:  172.20.0.0/16
+
